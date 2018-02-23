@@ -1,0 +1,22 @@
+{
+    "name": "kael-shipman/ddnsd-provider-name.com",
+    "description": "A script meant to work with ddnsd that manages dns records on name.com",
+    "keywords": [ "ddns", "dynamic dns", "dns" ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Kael Shipman and Contributors",
+            "homepage": "https://github.com/kael-shipman/ddnsd/graphs/contributors"
+        }
+    ],
+    "require": {
+        "php" : ">=7.1",
+        "guzzlehttp/guzzle": "^6.0.0",
+        "nategood/commando": "~0.2.9"
+    },
+    "autoload": {
+        "psr-4": {
+            "KS\\Ddnsd\\": "src/"
+        }
+    }
+}
