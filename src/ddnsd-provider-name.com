@@ -113,7 +113,7 @@ $creds = explode(":", $creds);
 $credProtocol = array_shift($creds);
 $creds = implode(":", $creds);
 
-if ($credProtocol === "APIKEY") {
+if ($credProtocol === "HTTPAUTH") {
     $creds = str_replace("|", ":", $creds);
     $clientOpts['headers']['Authorization'] = "Basic ".base64_encode($creds);
 } else {
