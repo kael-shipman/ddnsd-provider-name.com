@@ -1,0 +1,19 @@
+{
+    "build-dir": "build",
+    "ignore": [
+        "*test*",
+        "*.log",
+        "*.sw[op]"
+    ],
+    "executables": [
+        { 
+            "name": "ddnsd-provider-name.com",
+            "bootstrap-file": "src/ddnsd-provider-name.com",
+            "phar-spec": {
+                "src": "src",
+                "vendor": "vendor"
+            }
+        }
+    ]
+}
+
