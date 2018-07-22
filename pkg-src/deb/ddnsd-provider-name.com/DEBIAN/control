@@ -1,0 +1,9 @@
+Package: ddnsd-provider-name.com
+Version: ::VERSION::
+Section: free
+Priority: optional
+Architecture: all
+Depends: php-cli, php-mbstring
+Installed-Size: 0
+Maintainer: Kael Shipman <kael.shipman@gmail.com>
+Description: The ddnsd provider for name.com
