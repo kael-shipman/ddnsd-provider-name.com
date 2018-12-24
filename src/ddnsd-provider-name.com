@@ -114,6 +114,10 @@ $creds = implode(":", $creds);
 
 if ($credProtocol === "HTTPAUTH") {
     $creds = str_replace("|", ":", $creds);
+    syslog(
+        LOG_DEBUG,
+        "Final credentials before encoding: $creds"
+    );
     $clientOpts['headers']['Authorization'] = "Basic ".base64_encode($creds);
 } else {
     syslog(LOG_ERR, "Don't know how to handle credential protocol `$credProtocol`! Exiting.");
@@ -126,69 +130,81 @@ if ($credProtocol === "HTTPAUTH") {
 $client = new \GuzzleHttp\Client($clientOpts);
 
 
+$returnCode = 0;
+
 
 // Get list of current DNS Records
-$dns = $client->get("/v4/domains/$config[domain]/records");
-$dns = json_decode((string)$dns->getBody(), true);
+try {
+    syslog(
+        LOG_INFO,
+        "Getting DNS records from endpoint /v4/domains/$config[domain]/records"
+    );
+    $dns = $client->get("/v4/domains/$config[domain]/records");
+    $dns = json_decode((string)$dns->getBody(), true);
 
 
-// Iterate through subdomains and change IPs, if necessary
-foreach($config['subdomains'] as $subdomain) {
-    syslog(LOG_DEBUG, "Processing `$subdomain.$config[domain]`");
+    // Iterate through subdomains and change IPs, if necessary
+    foreach($config['subdomains'] as $subdomain) {
+        syslog(LOG_DEBUG, "Processing `$subdomain.$config[domain]`");
 
-    // See if we can find this entry in the current records
-    $entry = null;
-    foreach ($dns['records'] as $record) {
-        if (!array_key_exists('host', $record)) {
-            if ($subdomain === '@') {
+        // See if we can find this entry in the current records
+        $entry = null;
+        foreach ($dns['records'] as $record) {
+            if (!array_key_exists('host', $record)) {
+                if ($subdomain === '@') {
+                    $entry = $record;
+                    break;
+                }
+            } elseif ($record['host'] === $subdomain) {
                 $entry = $record;
                 break;
             }
-        } elseif ($record['host'] === $subdomain) {
-            $entry = $record;
-            break;
         }
-    }
 
-    $done = false;
-    $attempts = 0;
-    while(!$done && $attempts < 3) {
-        try {
-            // If this subdomain is already registered...
-            if ($entry) {
-                // And the IP has changed.... Update.
-                if ($entry['answer'] !== $config['ip']) {
-                    $entry['answer'] = $config['ip'];
-                    $entry['ttl'] = $config['ttl'];
-                    $client->put("/v4/domains/$config[domain]/records/$entry[id]", [ 'json' => $entry ]);
-                    syslog(LOG_DEBUG, "Successfully updated record for '$subdomain.$config[domain]', pointing to $config[ip]");
-                    $done = true;
+        $done = false;
+        $attempts = 0;
+        while(!$done && $attempts < 3) {
+            try {
+                // If this subdomain is already registered...
+                if ($entry) {
+                    // And the IP has changed.... Update.
+                    if ($entry['answer'] !== $config['ip']) {
+                        $entry['answer'] = $config['ip'];
+                        $entry['ttl'] = $config['ttl'];
+                        $client->put("/v4/domains/$config[domain]/records/$entry[id]", [ 'json' => $entry ]);
+                        syslog(LOG_DEBUG, "Successfully updated record for '$subdomain.$config[domain]', pointing to $config[ip]");
+                        $done = true;
+                    } else {
+                        $done = true;
+                    }
+
+                    // Otherwise, add a new record
                 } else {
-                    $done = true;
+                    $entry = [
+                        "host" => $subdomain,
+                        "answer" => $config['ip'],
+                        "ttl" => $config['ttl'],
+                        "type" => "A",
+                    ];
+                        $client->post("/v4/domains/$config[domain]/records", [ 'json' => $entry ]);
+                        syslog(LOG_DEBUG, "Successfully created record for '$subdomain.$config[domain]', pointing to $config[ip]");
+                        $done = true;
                 }
-
-            // Otherwise, add a new record
-            } else {
-                $entry = [
-                    "host" => $subdomain,
-                    "answer" => $config['ip'],
-                    "ttl" => $config['ttl'],
-                    "type" => "A",
-                ];
-                $client->post("/v4/domains/$config[domain]/records", [ 'json' => $entry ]);
-                syslog(LOG_DEBUG, "Successfully created record for '$subdomain.$config[domain]', pointing to $config[ip]");
-                $done = true;
+            } catch (\GuzzleHttp\Exception\ServerException $e) {
+                syslog(LOG_WARNING, "W: Server returned an error: {$e->getMessage()}. Waiting 5 seconds to try again....");
+                $attempts++;
+                sleep(5);
             }
-        } catch (\GuzzleHttp\Exception\ServerException $e) {
-            syslog(LOG_WARNING, "W: Server returned an error: {$e->getMessage()}. Waiting 5 seconds to try again....");
-            $attempts++;
-            sleep(5);
+        }
+
+        if (!$done) {
+            syslog(LOG_ERR, "E: Couldn't complete the requested action for '$subdomain.$config[domain]'!");
+            $returnCode = 14;
         }
     }
-
-    if (!$done) {
-        syslog(LOG_ERR, "E: Couldn't complete the requested action for '$subdomain.$config[domain]'!");
-    }
+} catch (\GuzzleHttp\Exception\ClientException $e) {
+    syslog(LOG_ERR, $e->getMessage());
+    $returnCode = 16;
 }
 
 
@@ -198,4 +214,6 @@ foreach($config['subdomains'] as $subdomain) {
 // Close up logs
 
 closelog();
+
+exit($returnCode);
 
